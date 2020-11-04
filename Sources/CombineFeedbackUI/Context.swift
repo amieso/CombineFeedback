@@ -13,7 +13,7 @@ public final class Context<State, Event>: ObservableObject {
         self.state = store.state
         self.send = store.send
         self.mutate = store.mutate
-        store.$state.assign(to: \.state, on: self).store(in: &bag)
+        store.$state.assign(to: \.state, weakly: self).store(in: &bag)
     }
         
     public init(
@@ -66,7 +66,36 @@ public final class Context<State, Event>: ObservableObject {
         
         return localContext
     }
-    
+
+    public func unwrapView<LocalState, LocalEvent>(
+        initial: LocalState,
+        value: WritableKeyPath<State, LocalState?>,
+        event: @escaping (LocalState, LocalEvent) -> Event,
+        removeDuplicates: @escaping (LocalState, LocalState) -> Bool
+    ) -> Context<LocalState, LocalEvent> {
+        let localContext = Context<LocalState, LocalEvent>(
+            state: initial,
+            send: { localEvent in
+                self.send(event(initial, localEvent))
+            },
+            mutate: { (mutation: Mutation<LocalState>)  in
+                let superMutation: Mutation<State> = Mutation  { state in
+                    var subState = state[keyPath: value] ?? initial
+                    mutation.mutate(&subState)
+                    state[keyPath: value] = subState
+                }
+                self.mutate(superMutation)
+            }
+        )
+
+        $state.map(value).compactMap { $0 }
+            .removeDuplicates(by: removeDuplicates)
+            .assign(to: \.state, on: localContext)
+            .store(in: &localContext.bag)
+
+        return localContext
+    }
+
     public func binding<U>(for keyPath: KeyPath<State, U>, event: @escaping (U) -> Event) -> Binding<U> {
         return Binding(
             get: {
@@ -99,7 +128,29 @@ public final class Context<State, Event>: ObservableObject {
             }
         )
     }
-    
+
+    public func optionalBinding<U: Equatable>(for keyPath: WritableKeyPath<State, Optional<U>>, value: U) -> Binding<Bool> {
+        return Binding(
+            get: {
+                self.state[keyPath: keyPath] == value
+            },
+            set: {
+                self.mutate(Mutation(keyPath: keyPath, value: $0 ? value : nil))
+            }
+        )
+    }
+
+    public func binding<U, T>(for keyPath: WritableKeyPath<State, U>, get: @escaping (U) -> T, set: @escaping (T) -> (U)) -> Binding<T> {
+        return Binding(
+            get: {
+                get(self.state[keyPath: keyPath])
+            },
+            set: {
+                self.mutate(Mutation(keyPath: keyPath, value: set($0)))
+            }
+        )
+    }
+
     public func action(for event: Event) -> () -> Void {
         return {
             self.send(event: event)
