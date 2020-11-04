@@ -64,7 +64,13 @@ public struct Mutation<State> {
             state[keyPath: keyPath] = value
         }
     }
-    
+
+    init<V>(keyPath: WritableKeyPath<State.Wrapped, V>, value2: V) where State: OptionalProtocol {
+        self.mutate = { state in
+            state.wrapped?[keyPath: keyPath] = value2
+        }
+    }
+
     init(mutate: @escaping (inout State) -> Void) {
         self.mutate = mutate
     }

@@ -157,3 +157,36 @@ public final class Context<State, Event>: ObservableObject {
         }
     }
 }
+
+public protocol OptionalProtocol {
+    associatedtype Wrapped
+    var wrapped: Wrapped? { get set }
+}
+
+extension Optional: OptionalProtocol {
+    public var wrapped: Wrapped? {
+        get {
+            return self
+        }
+        set {
+            self = newValue
+        }
+    }
+}
+
+extension Context where State: OptionalProtocol {
+    public func binding<U>(for keyPath: WritableKeyPath<State.Wrapped, U>, defaultValue: U) -> Binding<U> {
+        return Binding(
+            get: {
+                self.state.wrapped?[keyPath: keyPath] ?? defaultValue
+            },
+            set: {
+                self.mutate(Mutation(keyPath: keyPath, value2: $0))
+            }
+        )
+    }
+
+    public subscript<U>(dynamicMember keyPath: KeyPath<State.Wrapped, U>, defaultValue: U) -> U {
+        return state.wrapped?[keyPath: keyPath] ?? defaultValue
+    }
+}
