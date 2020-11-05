@@ -53,22 +53,31 @@ class CombineFeedbackTests: XCTestCase {
     }
 
     func test_reduce_with_two_immediate_feedback_loops() {
-        let feedback1 = Feedback<String, String>.middleware { _ in
-            Just("_a")
+        let feedback1 = Feedback<String, String>.middleware { state -> AnyPublisher<String, Never> in
+            if state == "initial" || state.hasSuffix("b") {
+                return Just("_a").eraseToAnyPublisher()
+            } else {
+                return Empty().eraseToAnyPublisher()
+            }
         }
-        let feedback2 = Feedback<String, String>.middleware { _ in
-            Just("_b")
+        let feedback2 = Feedback<String, String>.middleware { state -> AnyPublisher<String, Never> in
+            if state.hasSuffix("a") {
+                return Just("_b").eraseToAnyPublisher()
+            } else {
+                return Empty().eraseToAnyPublisher()
+            }
         }
         let system = Publishers.system(
             initial: "initial",
             feedbacks: [feedback1, feedback2],
             reduce: .init { (state, event) in
+                print("Event a \(event)")
                 state += event
             }
         )
         var results: [String] = []
 
-        _ = system.output(in: 0...5).collect().sink {
+        let cancel = system.output(in: 0...5).collect().sink {
             results = $0
         }
 
@@ -82,6 +91,7 @@ class CombineFeedbackTests: XCTestCase {
         ]
 
         XCTAssertEqual(results, expected)
+        cancel.cancel()
     }
 
     func test_should_observe_signals_immediately() {
@@ -92,6 +102,7 @@ class CombineFeedbackTests: XCTestCase {
                 input.feedback,
             ],
             reduce: .init { (state, event) in
+                print("Event b \(event)")
                 state += event
             }
         )
@@ -107,6 +118,7 @@ class CombineFeedbackTests: XCTestCase {
         XCTAssertEqual(["initial"], results)
         input.observer("_a")
         XCTAssertEqual(["initial", "initial_a"], results)
+        cancel.cancel()
     }
     
     func test_cancelation() {
