@@ -112,8 +112,8 @@ public final class Context<State, Event>: ObservableObject {
     }
 
     public func action(for event: Event) -> () -> Void {
-        return {
-            self.send(event: event)
+        return { [weak self] in
+            self?.send(event: event)
         }
     }
 }
