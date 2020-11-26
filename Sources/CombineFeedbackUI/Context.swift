@@ -67,6 +67,44 @@ public final class Context<State, Event>: ObservableObject {
         return localContext
     }
 
+    public func viewOptional<LocalState: Equatable, LocalEvent>(
+        initialState: LocalState,
+        value: WritableKeyPath<State, LocalState?>,
+        event: @escaping (LocalEvent) -> Event
+    ) -> Context<LocalState, LocalEvent> {
+        viewOptional(initialState: initialState, value: value, event: event, removeDuplicates: ==)
+    }
+
+    public func viewOptional<LocalState, LocalEvent>(
+        initialState: LocalState,
+        value: WritableKeyPath<State, LocalState?>,
+        event: @escaping (LocalEvent) -> Event,
+        removeDuplicates: @escaping (LocalState, LocalState) -> Bool
+    ) -> Context<LocalState, LocalEvent> {
+        let localContext = Context<LocalState, LocalEvent>(
+            state: initialState,
+            send: { [weak self] localEvent in
+                self?.send(event(localEvent))
+            },
+            mutate: { [weak self] (mutation: Mutation<LocalState>)  in
+                let superMutation: Mutation<State> = Mutation  { state in
+                    if var localState = state[keyPath: value] {
+                        mutation.mutate(&localState)
+                        state[keyPath: value] = localState
+                    }
+                }
+                self?.mutate(superMutation)
+            }
+        )
+
+        $state.compactMap { $0[keyPath: value] }
+            .removeDuplicates(by: removeDuplicates)
+            .assign(to: \.state, on: localContext)
+            .store(in: &localContext.bag)
+
+        return localContext
+    }
+
     public func binding<U>(for keyPath: KeyPath<State, U>, event: @escaping (U) -> Event) -> Binding<U> {
         return Binding(
             get: {
