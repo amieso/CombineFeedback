@@ -204,6 +204,21 @@ extension Feedback {
         }
     }
 
+    public func pullbackOptional<GlobalState, GlobalEvent>(
+        value: KeyPath<GlobalState, State?>,
+        event: CasePath<GlobalEvent, Event>
+    ) -> Feedback<GlobalState, GlobalEvent> {
+        return .custom { (state, consumer) -> Cancellable in
+            let state = state.compactMap { s, e in
+                return s[keyPath: value].flatMap { ($0, e.flatMap(event.extract(from:))) }
+            }.eraseToAnyPublisher()
+            return self.events(
+                state,
+                consumer.pullback(event.embed)
+            )
+        }
+    }
+
     public static func combine(_ feedbacks: Feedback<State, Event>...) -> Feedback<State, Event> {
         return Feedback.custom { (state, consumer) -> Cancellable in
             feedbacks.map { (feedback) -> Cancellable in
